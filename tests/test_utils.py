@@ -1,9 +1,12 @@
 from os import sep
 
+import pytest
+
 from constructor.utils import (
     bat_echo_esc,
     bat_env_var_esc,
     get_condarc_content,
+    hash_files,
     make_VIProductVersion,
     normalize_path,
 )
@@ -107,3 +110,12 @@ def test_get_condarc_content_returns_none():
     # write_condarc without channels should also return None
     info = {"write_condarc": True}
     assert get_condarc_content(info) is None
+
+
+def test_invalid_algorithm(tmp_path):
+    """Test that hash_files raises a ValueError for invalid algorithm names."""
+
+    path = tmp_path / "test.txt"
+    path.write_text("test string")
+    with pytest.raises(ValueError, match="bad_algorithm"):
+        hash_files([path], "bad_algorithm")

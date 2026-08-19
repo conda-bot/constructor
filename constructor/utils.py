@@ -76,16 +76,46 @@ def fill_template(data, d, exceptions=[]):
     return pat.sub(replace, data)
 
 
-def hash_files(paths, algorithm="md5"):
-    h = hashlib.new(algorithm)
+def hash_files(paths: list[Path], algorithms: list[str] | str) -> dict[str, str]:
+    """
+    Calculate one or more hashes for the given files in a single pass.
+
+    Parameters
+    ----------
+    paths
+        An iterable of paths to hash.
+    algorithms
+        An iterable of hashlib algorithm names, such as ``md5`` or ``sha256``
+
+    Returns
+    -------
+    dict[str, str]
+        A mapping of algorithm names to digest values.
+    """
+    if isinstance(algorithms, str):
+        algorithms = [algorithms]
+
+    algorithms = set(algorithms)
+    invalid = algorithms.difference(hashlib.algorithms_available)
+    if invalid:
+        invalid_algo = "algorithm" if len(invalid) == 1 else "algorithms"
+        raise ValueError(f"Invalid {invalid_algo}: {', '.join(sorted(invalid))}")
+
+    BUFFER_SIZE = 65536
+
+    hashes = {algo: hashlib.new(algo) for algo in algorithms}
+
     for path in paths:
-        with open(path, "rb") as fi:
+        with open(path, "rb") as f:
             while True:
-                chunk = fi.read(262144)
+                chunk = f.read(BUFFER_SIZE)
                 if not chunk:
                     break
-                h.update(chunk)
-    return h.hexdigest()
+
+                for filehash in hashes.values():
+                    filehash.update(chunk)
+
+    return {algorithm: filehash.hexdigest() for algorithm, filehash in hashes.items()}
 
 
 def make_VIProductVersion(version):

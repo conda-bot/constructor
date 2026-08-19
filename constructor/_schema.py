@@ -858,7 +858,7 @@ class ConstructorConfiguration(BaseModel):
             It expects either a list of strings or single-key dictionaries.
 
             Allowed strings / keys: {}.
-            """.format(", ".join([f"`{v}`" for v in BuildOutputs.__members__.values()])),
+            """.format(", ".join(f"`{member.value}`" for member in BuildOutputs))
         ),
     )
     uninstall_with_conda_exe: bool | None = None

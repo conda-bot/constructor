@@ -4,7 +4,6 @@ Additional artifacts to be produced after building the installer.
 Update documentation in `construct.py` if any changes are made.
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -17,7 +16,9 @@ from conda.core.prefix_data import PrefixData, PrefixGraph
 from conda.exports import default_prefix
 
 from . import __version__
+from ._schema import BuildOutputs
 from .conda_interface import VersionOrder
+from .utils import hash_files
 
 logger = logging.getLogger(__name__)
 
@@ -59,48 +60,80 @@ def _validate_output(output):
     return {key: (value or {}) for (key, value) in output.items()}
 
 
-def process_build_outputs(info):
+def _needed_hash_algorithms(info: dict) -> set[str]:
+    """Return hash algorithms required by the requested build outputs."""
+    algorithms = set()
+
     for output in info.get("build_outputs", ()):
         output = _validate_output(output)
         name, config = output.popitem()
+
+        if name == BuildOutputs.INFO_JSON:
+            algorithms.add("sha256")
+        elif name == BuildOutputs.HASH:
+            algorithm = config.get("algorithm")
+            if isinstance(algorithm, str):
+                algorithms.add(algorithm)
+            elif algorithm:
+                algorithms.update(algorithm)
+
+    return algorithms
+
+
+def process_build_outputs(info: dict):
+    algorithms = _needed_hash_algorithms(info)
+
+    if algorithms:
+        info["_installer_hashes"] = hash_files(
+            [info["_outpath"]],
+            algorithms,
+        )
+
+    for output in info.get("build_outputs", ()):
+        output = _validate_output(output)
+
+        name, config = output.popitem()
+
         handler = OUTPUT_HANDLERS.get(name)
         if not handler:
             raise ValueError(
-                f"'output_builds' key {name} is not recognized! "
+                f"'build_outputs' key {name} is not recognized! "
                 f"Available keys: {tuple(OUTPUT_HANDLERS.keys())}"
             )
+
         outpath = handler(info, **config)
         if outpath:
             logger.info("build_outputs: '%s' created '%s'.", name, outpath)
 
 
-def dump_hash(info, algorithm=None):
+def dump_hash(info: dict, algorithm: str | None = None):
     if not algorithm:
         logger.warning("`hash` requires an algorithm. No hash files will be output.")
         return ""
+
     if isinstance(algorithm, str):
-        algorithm = [algorithm]
-    algorithms = set(algorithm)
-    if any(algo not in hashlib.algorithms_available for algo in algorithms):
-        invalid = algorithms.difference(set(hashlib.algorithms_available))
-        raise ValueError(f"Invalid algorithm: {', '.join(invalid)}")
-    BUFFER_SIZE = 65536
-    if isinstance(info["_outpath"], str):
-        installers = [Path(info["_outpath"])]
+        algorithms = [algorithm]
     else:
-        installers = [Path(outpath) for outpath in info["_outpath"]]
+        algorithms = algorithm
+
+    installer = Path(info["_outpath"])
     outpaths = []
-    for installer in installers:
-        filehashes = {algo: hashlib.new(algo) for algo in algorithms}
-        with open(installer, "rb") as f:
-            while buffer := f.read(BUFFER_SIZE):
-                for algo in algorithms:
-                    filehashes[algo].update(buffer)
-        for algo, filehash in filehashes.items():
-            outpath = Path(f"{installer}.{algo}")
-            with open(outpath, "w", newline="\n") as f:
-                f.write(f"{filehash.hexdigest()}  {installer.name}\n")
-            outpaths.append(str(outpath.absolute()))
+
+    for algo in algorithms:
+        try:
+            filehash = info["_installer_hashes"][algo]
+        except KeyError:
+            raise RuntimeError(
+                f"Hash for algorithm '{algo}' not found. "
+                f"Available algorithms: {', '.join(info.get('_installer_hashes', {}).keys())}"
+            ) from None
+        outpath = Path(f"{installer}.{algo}")
+
+        with open(outpath, "w", newline="\n") as f:
+            f.write(f"{filehash}  {installer.name}\n")
+
+        outpaths.append(str(outpath.absolute()))
+
     return ", ".join(outpaths)
 
 
