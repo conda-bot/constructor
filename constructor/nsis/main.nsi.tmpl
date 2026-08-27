@@ -1747,14 +1747,13 @@ Section "Install"
     ${EndIf}
 
     ${Print} "Setting installation directory permissions..."
-    # Enable inheritance on all files inside $INSTDIR.
-    # Use icacls because it is much faster than custom NSIS solutions.
-    # We continue on error because icacls fails on broken links.
-    # `type` is used to simulate a `tee`-like output in cmd.exe
-    push '"$ICACLS_EXE" "$INSTDIR\*" /inheritance:e /T /C /Q > "${STEP_LOG}" 2>&1 & SET ERR=!ERRORLEVEL! & type "${STEP_LOG}" & EXIT /B !ERR!'
-    push 'Failed to enable inheritance for all files in the installation directory.'
+    # `type` is used to simulate a `tee`-like output in cmd.exe.
+    {%- for env in SETUP_ENVS %}
+    push '"$ICACLS_EXE" "{{ env.prefix }}\Scripts\*" /inheritance:e /T /C /Q > "${STEP_LOG}" 2>&1 & SET ERR=!ERRORLEVEL! & type "${STEP_LOG}" & EXIT /B !ERR!'
+    push 'Failed to update ACLs in environment "{{ env.name }}".'
     push 'WithLog'
     call AbortRetryNSExecWait
+    {%- endfor %}
     ${Print} "Done!"
 SectionEnd
 

@@ -169,6 +169,8 @@ def make_nsi(
     info["pre_install_desc"] = info.get("pre_install_desc", "")
     info["post_install_desc"] = info.get("post_install_desc", "")
 
+    setup_envs = setup_envs_commands(info, dir_path)
+
     variables = {
         "installer_name": name,
         "installer_version": info["version"],
@@ -290,7 +292,7 @@ def make_nsi(
     variables["BITS"] = str(arch)
     variables["DISTS"] = [win_str_esc(join(download_dir, dist)) for dist in dists]
     variables["SIGNTOOL_COMMAND"] = signing_tool.get_signing_command() if signing_tool else ""
-    variables["SETUP_ENVS"] = setup_envs_commands(info, dir_path)
+    variables["SETUP_ENVS"] = setup_envs
     variables["SIZE"] = approx_pkgs_size_kb
     variables["UNINSTALL_NAME"] = info.get("uninstall_name", default_uninstall_name)
     variables["EXTRA_FILES"] = get_extra_files(extra_files, dir_path)
